@@ -47,7 +47,16 @@
         "title": "未解決の agent 参照を表示",
         "category": "DirectoR"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "directr.showWorkflowDiagram",
+          "when": "resourceScheme == file && resourcePath =~ /[\\/\\\\]\\.director[\\/\\\\]workflows[\\/\\\\][^\\/\\\\]+\\.ya?ml$/i",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

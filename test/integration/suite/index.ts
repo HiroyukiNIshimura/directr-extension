@@ -19,6 +19,12 @@ async function openDocument(workspaceRoot: string, relative: string): Promise<vs
 export async function run(): Promise<void> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   assert.ok(workspaceRoot, 'DirectoR プロジェクトがワークスペースとして開かれていません');
+  const extension = vscode.extensions.getExtension('j69.directr-workflow-links');
+  const editorMenu: unknown = extension?.packageJSON?.contributes?.menus?.['editor/context'];
+  assert.ok(
+    Array.isArray(editorMenu) && editorMenu.some((item) => item.command === 'directr.showWorkflowDiagram'),
+    'フロー図コマンドのエディターメニューが登録されていません',
+  );
 
   const workflow = await openDocument(workspaceRoot, '.director/workflows/release-validate.yaml');
   const workflowLinks =

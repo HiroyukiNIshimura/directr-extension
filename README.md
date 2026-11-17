@@ -47,7 +47,7 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 
 ## フロー図
 
-workflow YAML を開き、コマンドパレットから `DirectoR: フロー図を表示` を実行します。依存関係・成功・失敗遷移を色分けして表示し、step のクリックで YAML の定義へ移動できます。編集中の変更も反映されます。parallel / chunk の agent は親 step 内にまとめて表示します。
+workflow YAML を開き、エディターの右クリックメニュー、またはコマンドパレットから `DirectoR: フロー図を表示` を実行します。依存関係・成功・失敗遷移を色分けして表示し、step のクリックで YAML の定義へ移動できます。編集中の変更も反映されます。parallel / chunk の agent は親 step 内にまとめて表示します。
 
 ## コマンド
 
