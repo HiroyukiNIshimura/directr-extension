@@ -2,7 +2,7 @@
   "name": "directr-workflow-links",
   "displayName": "DirectoR Workflow Links",
   "description": "DirectoR の workflow YAML と profile / エージェント定義を行き来するためのリンクを提供します。",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "publisher": "j69",
   "license": "MIT",
   "repository": {
@@ -63,7 +63,9 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
-    "test:vscode": "npm run compile && node out/test/integration/runTest.js"
+    "test:vscode": "npm run compile && node out/test/integration/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "dependencies": {
     "yaml": "^2.8.1"
@@ -72,6 +74,7 @@
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.1",
     "typescript": "^5.7.0"
   }
 }
