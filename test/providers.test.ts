@@ -215,7 +215,11 @@ test('profile YAML は呼び出し元が 2 件以上なら CodeLens で列挙す
     ],
   );
   assert.deepEqual(
-    lenses.map((lens) => path.basename((lens.command.arguments?.[0] as { fsPath: string }).fsPath)),
+    lenses.map((lens) => {
+      const target = lens.command.arguments?.[0];
+      assert.ok(target && typeof target === 'object' && 'fsPath' in target && typeof target.fsPath === 'string');
+      return path.basename(target.fsPath);
+    }),
     ['code-review.yaml', 'release-validate.yaml'],
   );
 
