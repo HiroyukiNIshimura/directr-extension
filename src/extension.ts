@@ -4,6 +4,10 @@ import { agentFileKey, profileNameFromAgentId } from './core/agentReference';
 import { DirectorIndexService } from './indexService';
 import { DirectorCodeLensProvider } from './providers/codeLensProvider';
 import { DirectorDocumentLinkProvider } from './providers/documentLinkProvider';
+import { DirectorHoverProvider } from './providers/hoverProvider';
+import { DirectorCompletionProvider } from './providers/completionProvider';
+import { WorkflowDiagnostics } from './providers/diagnostics';
+import { showWorkflowDiagram } from './workflowDiagram';
 
 const YAML_SELECTOR: vscode.DocumentSelector = [
   { scheme: 'file', language: 'yaml' },
@@ -23,6 +27,14 @@ export function activate(context: vscode.ExtensionContext): void {
       new DirectorDocumentLinkProvider(indexes),
     ),
     vscode.languages.registerCodeLensProvider(YAML_SELECTOR, codeLensProvider),
+    vscode.languages.registerHoverProvider(YAML_SELECTOR, new DirectorHoverProvider(indexes)),
+    vscode.languages.registerCompletionItemProvider(YAML_SELECTOR, new DirectorCompletionProvider(indexes), ':', '[', ',', ' '),
+    new WorkflowDiagnostics(),
+    vscode.commands.registerCommand('directr.showWorkflowDiagram', () => {
+      const document = vscode.window.activeTextEditor?.document;
+      if (document) showWorkflowDiagram(document);
+      else void vscode.window.showWarningMessage('DirectoR: workflow YAML を開いてから実行してください。');
+    }),
     vscode.commands.registerCommand('directr.refreshIndex', () => {
       indexes.invalidateAll();
       vscode.window.setStatusBarMessage('DirectoR: インデックスを再読み込みしました', 3000);

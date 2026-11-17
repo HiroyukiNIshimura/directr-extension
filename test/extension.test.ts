@@ -50,6 +50,19 @@ const vscodeStub = {
       registrations.push('codeLens');
       return { dispose: () => {} };
     },
+    registerHoverProvider: () => {
+      registrations.push('hover');
+      return { dispose: () => {} };
+    },
+    registerCompletionItemProvider: () => {
+      registrations.push('completion');
+      return { dispose: () => {} };
+    },
+    createDiagnosticCollection: () => ({
+      set: () => {},
+      delete: () => {},
+      dispose: () => {},
+    }),
   },
   commands: {
     registerCommand: (name: string, handler: (...args: unknown[]) => unknown) => {
@@ -79,6 +92,10 @@ const vscodeStub = {
     }),
     onDidChangeWorkspaceFolders: () => ({ dispose: () => {} }),
     onDidSaveTextDocument: () => ({ dispose: () => {} }),
+    onDidOpenTextDocument: () => ({ dispose: () => {} }),
+    onDidChangeTextDocument: () => ({ dispose: () => {} }),
+    onDidCloseTextDocument: () => ({ dispose: () => {} }),
+    textDocuments: [],
   },
 };
 
@@ -97,6 +114,8 @@ const { activate, deactivate } = require('../src/extension') as {
   activate(context: { subscriptions: { dispose(): void }[] }): void;
   deactivate(): void;
 };
+const { diagramHtml } = require('../src/workflowDiagram') as typeof import('../src/workflowDiagram');
+const { parseWorkflow } = require('../src/core/workflowModel') as typeof import('../src/core/workflowModel');
 
 test('activate は Provider と コマンドを登録する', () => {
   const context = { subscriptions: [] as { dispose(): void }[] };
@@ -105,6 +124,9 @@ test('activate は Provider と コマンドを登録する', () => {
   assert.deepEqual(registrations, [
     'documentLink',
     'codeLens',
+    'hover',
+    'completion',
+    'command:directr.showWorkflowDiagram',
     'command:directr.refreshIndex',
     'command:directr.showUnresolvedReference',
   ]);
@@ -121,4 +143,29 @@ test('未解決参照コマンドは想定パスを警告に含める', async ()
 
 test('deactivate は例外を投げない', () => {
   assert.doesNotThrow(() => deactivate());
+});
+
+test('フロー図は依存と成功・失敗を区別し YAML の内容をエスケープする', () => {
+  const model = parseWorkflow(`workflow:
+  name: "<unsafe>"
+  steps:
+    - id: plan
+      depends_on: []
+      success: {}
+      failure:
+        destination: abort
+    - id: review
+      depends_on: [plan]
+      success: {}
+      failure:
+        destination: plan
+`);
+  const html = diagramHtml(model, 'test-nonce');
+  assert.match(html, /&lt;unsafe&gt;/);
+  assert.doesNotMatch(html, /<unsafe>/);
+  assert.match(html, /class="dependency"/);
+  assert.match(html, /class="success"/);
+  assert.match(html, /class="failure"/);
+  assert.match(html, /data-step="1"/);
+  assert.match(html, /path\.dependency,path\.success,path\.failure\{fill:none/);
 });

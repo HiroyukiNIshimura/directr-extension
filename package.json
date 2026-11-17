@@ -33,6 +33,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "directr.showWorkflowDiagram",
+        "title": "フロー図を表示",
+        "category": "DirectoR"
+      },
+      {
         "command": "directr.refreshIndex",
         "title": "インデックスを再読み込み",
         "category": "DirectoR"
@@ -50,6 +55,9 @@
     "watch": "tsc -w -p .",
     "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
     "test:vscode": "npm run compile && node out/test/integration/runTest.js"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

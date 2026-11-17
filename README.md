@@ -33,10 +33,27 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 - 呼び出し元が 1 件: `name` の値にリンク（Cmd/Ctrl + クリックで workflow YAML を開く）。
 - 呼び出し元が 2 件以上: `name` 行の上に呼び出し元 workflow ごとの CodeLens（step id 付き）を表示。
 
+## step と artifact への移動
+
+- workflow の `start_step_id`、`depends_on`、`success.destination`、`failure.destination` や `failure.routes` の遷移先から、その workflow 内の step 定義へ移動できます。
+- profile の `artifacts` の値と `artifact_sections[].artifact` の別名から、対応する `.director/workflows/artifacts/*.yaml` を開けます。
+- workflow の `agent` にマウスを合わせると、対応する profile の説明・phase・tools を表示します。
+
+## 補完と診断
+
+- workflow の `agent` に既存 profile、`depends_on` に先行 step、`destination` / `start_step_id` に step ID を補完します。
+- 編集中の workflow に対し、YAML の構文、未定義・重複 step、依存順序、遷移先、後方遷移時の `max_visits` などを診断します。
+- これは主要な参照のチェックであり、DirectoR のスキーマ・バリデーターによる完全な検証の代わりではありません。拡張機能はプロジェクト内のスクリプトを自動実行しません。
+
+## フロー図
+
+workflow YAML を開き、コマンドパレットから `DirectoR: フロー図を表示` を実行します。依存関係・成功・失敗遷移を色分けして表示し、step のクリックで YAML の定義へ移動できます。編集中の変更も反映されます。parallel / chunk の agent は親 step 内にまとめて表示します。
+
 ## コマンド
 
 | コマンド | 説明 |
 | --- | --- |
+| `DirectoR: フロー図を表示` (`directr.showWorkflowDiagram`) | 開いている workflow のフロー図を表示します。 |
 | `DirectoR: インデックスを再読み込み` (`directr.refreshIndex`) | キャッシュした索引を作り直します。 |
 | `DirectoR: 未解決の agent 参照を表示` (`directr.showUnresolvedReference`) | 警告 CodeLens から呼ばれ、想定した参照先を表示します。 |
 
