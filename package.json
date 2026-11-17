@@ -1,0 +1,60 @@
+{
+  "name": "directr-workflow-links",
+  "displayName": "DirectoR Workflow Links",
+  "description": "DirectoR の workflow YAML と profile / エージェント定義を行き来するためのリンクを提供します。",
+  "version": "0.0.1",
+  "publisher": "j69",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HiroyukiNIshimura/directr-extension.git"
+  },
+  "homepage": "https://github.com/HiroyukiNIshimura/directr-extension",
+  "bugs": {
+    "url": "https://github.com/HiroyukiNIshimura/directr-extension/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "director",
+    "workflow",
+    "yaml",
+    "agent"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onLanguage:yaml",
+    "workspaceContains:.director/workflows"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "directr.refreshIndex",
+        "title": "インデックスを再読み込み",
+        "category": "DirectoR"
+      },
+      {
+        "command": "directr.showUnresolvedReference",
+        "title": "未解決の agent 参照を表示",
+        "category": "DirectoR"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
+    "test:vscode": "npm run compile && node out/test/integration/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
+    "typescript": "^5.7.0"
+  }
+}
