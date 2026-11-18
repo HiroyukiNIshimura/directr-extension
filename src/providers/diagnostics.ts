@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
+import { getProfileSchema, getWorkflowSchema } from '../core/profileSchema';
+import { validateSchema } from '../core/schemaDiagnostics';
 import { parseWorkflow, validateWorkflow } from '../core/workflowModel';
+import { parseYaml } from '../core/yamlModel';
 import { resolveDirectorLocation } from '../location';
 
 export class WorkflowDiagnostics implements vscode.Disposable {
@@ -22,16 +25,33 @@ export class WorkflowDiagnostics implements vscode.Disposable {
   private schedule(document: vscode.TextDocument): void {
     const key = document.uri.toString();
     this.cancel(key);
-    if (resolveDirectorLocation(document)?.kind !== 'workflow') {
+    const location = resolveDirectorLocation(document);
+    if (!location) {
       this.diagnostics.delete(document.uri);
       return;
     }
     this.timers.set(key, setTimeout(() => {
       this.timers.delete(key);
-      const model = parseWorkflow(document.getText());
+      const text = document.getText();
+      const model = location.kind === 'workflow' ? parseWorkflow(text) : undefined;
+      const yamlIssues = model
+        ? model.errors.map((error) => ({ location: error, message: `YAML: ${error.message}` }))
+        : parseYaml(text).errors.map((error) => {
+            const start = error.pos[0] ?? 0;
+            return {
+              location: { start, end: Math.max(start + 1, error.pos[1] ?? start + 1) },
+              message: `YAML: ${error.message}`,
+            };
+          });
       const issues = [
-        ...model.errors.map((error) => ({ location: error, message: `YAML: ${error.message}` })),
-        ...validateWorkflow(model),
+        ...yamlIssues,
+        ...(model ? validateWorkflow(model) : []),
+        ...validateSchema(
+          text,
+          location.kind === 'workflow'
+            ? getWorkflowSchema(location.root)
+            : getProfileSchema(location.root),
+        ).map((issue) => ({ location: issue, message: issue.message })),
       ];
       this.diagnostics.set(document.uri, issues.map(({ location, message }) => {
         const range = new vscode.Range(document.positionAt(location.start), document.positionAt(location.end));

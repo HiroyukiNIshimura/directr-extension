@@ -7,9 +7,18 @@ export interface ProfileSchemaProperty {
   items?: ProfileSchemaProperty;
   properties?: Record<string, ProfileSchemaProperty>;
   $ref?: string;
+  type?: string | string[];
+  required?: string[];
+  additionalProperties?: boolean | ProfileSchemaProperty;
+  minItems?: number;
+  maxItems?: number;
+  uniqueItems?: boolean;
+  minLength?: number;
+  minimum?: number;
+  pattern?: string;
 }
 
-interface JsonSchema {
+export interface JsonSchema {
   properties?: Record<string, ProfileSchemaProperty>;
   $defs?: Record<string, ProfileSchemaProperty>;
 }
@@ -34,6 +43,14 @@ export function getWorkflowSchemaProperty(
   keyPath: string[],
 ): ProfileSchemaProperty | undefined {
   return getSchemaProperty(root, 'workflow.schema.json', keyPath);
+}
+
+export function getProfileSchema(root: string): JsonSchema | undefined {
+  return loadSchema(path.join(root, '.director', 'workflows', 'schema', 'subagent-profile.schema.json'));
+}
+
+export function getWorkflowSchema(root: string): JsonSchema | undefined {
+  return loadSchema(path.join(root, '.director', 'workflows', 'schema', 'workflow.schema.json'));
 }
 
 function getSchemaProperty(

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseWorkflow, validateWorkflow } from '../src/core/workflowModel';
+import { validateSchema } from '../src/core/schemaDiagnostics';
 import { parseProfileInfo } from '../src/core/yamlModel';
 
 const validWorkflow = `workflow:
@@ -82,4 +83,34 @@ artifact_sections:
   assert.equal(info.phase, 'plan');
   assert.deepEqual(info.tools, ['read', 'search']);
   assert.deepEqual(info.artifacts.map((item) => [text.slice(item.start, item.end), item.value]), [['jotai', 'jotai'], ['state', 'jotai']]);
+});
+
+test('schema 違反を位置付きで診断する', () => {
+  const text = `name: test
+phase: invalid
+tools: [read, read]
+unknown: true
+`;
+  const schema = {
+    type: 'object',
+    required: ['name', 'phase', 'tools', 'intro'],
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string' },
+      phase: { type: 'string', enum: ['plan', 'review'] },
+      tools: {
+        type: 'array',
+        uniqueItems: true,
+        items: { type: 'string', enum: ['read', 'edit'] },
+      },
+      intro: { type: 'string', minLength: 1 },
+    },
+  };
+
+  const issues = validateSchema(text, schema);
+  assert.ok(issues.some((issue) => issue.message.includes('候補外の値')));
+  assert.ok(issues.some((issue) => issue.message.includes('重複')));
+  assert.ok(issues.some((issue) => issue.message.includes('スキーマにないキー')));
+  assert.ok(issues.some((issue) => issue.message.includes('必須キーがありません: intro')));
+  assert.ok(issues.every((issue) => issue.start >= 0 && issue.end > issue.start));
 });

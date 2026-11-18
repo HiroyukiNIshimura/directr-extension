@@ -6,10 +6,10 @@ DirectoR の workflow YAML と、その step が呼び出す profile YAML / エ�
 
 VS Code で開いているプロジェクト（ワークスペースフォルダ）直下の次のファイルだけで機能します。
 
-| 種類 | パス |
-| --- | --- |
-| workflow | `.director/workflows/*.yaml`（`*.yml` も可） |
-| profile | `.director/workflows/profiles/*.yaml`（`*.yml` も可） |
+| 種類     | パス                                                  |
+| -------- | ----------------------------------------------------- |
+| workflow | `.director/workflows/*.yaml`（`*.yml` も可）          |
+| profile  | `.director/workflows/profiles/*.yaml`（`*.yml` も可） |
 
 `profiles` の下位ディレクトリや `.director/workflows/generated` は対象外です。
 
@@ -17,11 +17,10 @@ VS Code で開いているプロジェクト（ワークスペースフォルダ
 
 `steps.agent`（`parallel.worker.agent` などの入れ子も含む）が指す先へリンクします。
 
-| `steps.agent` の値 | 解決先 |
-| --- | --- |
-| `DR-wfsub-<name>` | `.director/workflows/profiles` 配下で `name: <name>` を持つ YAML |
-| 上記が見つからない場合 | `.github/agents/<agent から DR- を除いた小文字>.agent.md` |
-
+| `steps.agent` の値     | 解決先                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| `DR-wfsub-<name>`      | `.director/workflows/profiles` 配下で `name: <name>` を持つ YAML |
+| 上記が見つからない場合 | `.github/agents/<agent から DR- を除いた小文字>.agent.md`        |
 - `agent` の値に Cmd/Ctrl + クリックすると profile YAML を開きます。
 - 各 step の上に、生成済みの `.github/agents/wfsub-<name>.agent.md` を開く CodeLens を表示します（`generate-wfsub.mjs` の出力規則に合わせています）。
 - profile はあるが agent 定義が未生成の場合は警告 CodeLens、どちらも見つからない場合は `未解決` の警告 CodeLens を表示します。
@@ -48,6 +47,7 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 - profile のフィールドにスキーマの `description` があれば、ネストしたキーを含めてカーソル位置に説明を表示します。
 - workflow のネストしたフィールドにも `.director/workflows/schema/workflow.schema.json` の `description` を表示します。
 - 編集中の workflow に対し、YAML の構文、未定義・重複 step、依存順序、遷移先、後方遷移時の `max_visits` などを診断します。
+- workflow / profile のスキーマに対し、必須キー不足、未定義キー、型、enum、配列長・重複、文字列長、数値下限を波線で表示します。複雑な `if` / `allOf` などの条件制約は対象外です。スキーマはキャッシュし、入力後 200ms の debounce で検証します。
 - これは主要な参照のチェックであり、DirectoR のスキーマ・バリデーターによる完全な検証の代わりではありません。拡張機能はプロジェクト内のスクリプトを自動実行しません。
 
 ## フロー図
@@ -56,10 +56,10 @@ workflow YAML を開き、エディターの右クリックメニュー、また
 
 ## コマンド
 
-| コマンド | 説明 |
-| --- | --- |
-| `DirectoR: フロー図を表示` (`directr.showWorkflowDiagram`) | 開いている workflow のフロー図を表示します。 |
-| `DirectoR: インデックスを再読み込み` (`directr.refreshIndex`) | キャッシュした索引を作り直します。 |
+| コマンド                                                                  | 説明                                                   |
+| ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `DirectoR: フロー図を表示` (`directr.showWorkflowDiagram`)                | 開いている workflow のフロー図を表示します。           |
+| `DirectoR: インデックスを再読み込み` (`directr.refreshIndex`)             | キャッシュした索引を作り直します。                     |
 | `DirectoR: 未解決の agent 参照を表示` (`directr.showUnresolvedReference`) | 警告 CodeLens から呼ばれ、想定した参照先を表示します。 |
 
 索引は `.director/workflows/**` と `.github/agents/**` の変更・保存時に自動で破棄されます。
@@ -84,4 +84,4 @@ npm run test:vscode
 
 ## アイコン
 
-ストア用アイコンは未設定です。作成後に `package.json` の `icon` へ追加してください。
+ストア用アイコンは未設定です。
