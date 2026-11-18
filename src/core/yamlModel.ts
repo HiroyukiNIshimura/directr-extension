@@ -39,6 +39,46 @@ export function numberValue(node: unknown): number | undefined {
   return isScalar(node) && typeof node.value === 'number' ? node.value : undefined;
 }
 
+export interface LocatedYamlField {
+  key: string;
+  path: string[];
+  start: number;
+  end: number;
+}
+
+export function yamlFieldAt(text: string, offset: number): LocatedYamlField | undefined {
+  const doc = parseYaml(text);
+  if (doc.errors.length) return undefined;
+  return findYamlField(doc.contents, offset, []);
+}
+
+function findYamlField(
+  node: unknown,
+  offset: number,
+  path: string[],
+): LocatedYamlField | undefined {
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      const key = stringValue(pair.key);
+      const range = isScalar(pair.key) ? pair.key.range : undefined;
+      if (!key || !range) continue;
+      if (range[0] <= offset && offset <= range[1]) {
+        return { key, path: [...path, key], start: range[0], end: range[1] };
+      }
+      const value = findYamlField(pair.value, offset, [...path, key]);
+      if (value) return value;
+    }
+    return undefined;
+  }
+  if (isSeq(node)) {
+    for (const item of node.items) {
+      const value = findYamlField(item, offset, path);
+      if (value) return value;
+    }
+  }
+  return undefined;
+}
+
 export interface ProfileInfo {
   description?: string;
   phase?: string;

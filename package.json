@@ -2,7 +2,7 @@
   "name": "directr-workflow-links",
   "displayName": "DirectoR Workflow Links",
   "description": "DirectoR の workflow YAML と profile / エージェント定義を行き来するためのリンクを提供します。",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "j69",
   "license": "MIT",
   "repository": {

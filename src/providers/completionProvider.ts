@@ -1,7 +1,5 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-
 import * as vscode from 'vscode';
+import { getProfileSchemaEnum } from '../core/profileSchema';
 import { parseWorkflow } from '../core/workflowModel';
 import type { DirectorIndexService } from '../indexService';
 import { resolveDirectorLocation } from '../location';
@@ -61,7 +59,7 @@ function profileCompletions(
       : undefined;
   if (!key) return [];
 
-  const candidates = readProfileEnum(root, key);
+  const candidates = getProfileSchemaEnum(root, key);
   const range = document.getWordRangeAtPosition(position, /[a-zA-Z0-9_-]+/);
   return candidates.map((candidate) => {
     const item = new vscode.CompletionItem(candidate, vscode.CompletionItemKind.EnumMember);
@@ -84,37 +82,6 @@ function insideProfileTools(document: vscode.TextDocument, position: vscode.Posi
     if (!/^\s+-\s*(?:[^#]*)$/.test(text)) return false;
   }
   return false;
-}
-
-function readProfileEnum(root: string, key: 'tools' | 'phase'): string[] {
-  const schemaPath = path.join(
-    root,
-    '.director',
-    'workflows',
-    'schema',
-    'subagent-profile.schema.json',
-  );
-  try {
-    const schema: unknown = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-    if (!isRecord(schema) || !isRecord(schema.properties) || !isRecord(schema.properties[key])) {
-      return [];
-    }
-    const property = schema.properties[key];
-    const values = key === 'tools'
-      ? isRecord(property.items) ? property.items.enum : undefined
-      : property.enum;
-    if (!Array.isArray(values)) return [];
-    return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
-  } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-      console.warn(`DirectoR: profile スキーマを読み込めませんでした: ${schemaPath}`);
-    }
-    return [];
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function insideSuccess(document: vscode.TextDocument, position: vscode.Position): boolean {

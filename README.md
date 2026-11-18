@@ -45,6 +45,8 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 - workflow の `agent` に既存 profile、`depends_on` に先行 step、`destination` / `start_step_id` に step ID を補完します。
 - profile の `tools` に `.director/workflows/schema/subagent-profile.schema.json` の enum を補完します（flow / block 配列の両方に対応）。
 - profile の `phase` に `.director/workflows/schema/subagent-profile.schema.json` の enum を補完します。
+- profile のフィールドにスキーマの `description` があれば、ネストしたキーを含めてカーソル位置に説明を表示します。
+- workflow のネストしたフィールドにも `.director/workflows/schema/workflow.schema.json` の `description` を表示します。
 - 編集中の workflow に対し、YAML の構文、未定義・重複 step、依存順序、遷移先、後方遷移時の `max_visits` などを診断します。
 - これは主要な参照のチェックであり、DirectoR のスキーマ・バリデーターによる完全な検証の代わりではありません。拡張機能はプロジェクト内のスクリプトを自動実行しません。
 

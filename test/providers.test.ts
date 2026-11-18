@@ -62,6 +62,25 @@ class CompletionItem {
   ) {}
 }
 
+class MarkdownString {
+  value = '';
+  appendMarkdown(value: string): this {
+    this.value += value;
+    return this;
+  }
+  appendText(value: string): this {
+    this.value += value;
+    return this;
+  }
+}
+
+class Hover {
+  constructor(
+    public contents: MarkdownString,
+    public range: Range,
+  ) {}
+}
+
 class EventEmitter<T> {
   private readonly listeners = new Set<(event: T) => void>();
 
@@ -89,6 +108,14 @@ const vscodeStub = {
   CodeLens,
   CompletionItem,
   CompletionItemKind: { Reference: 18, EnumMember: 22 },
+  MarkdownString,
+  Hover,
+  Position: class {
+    constructor(
+      public line: number,
+      public character: number,
+    ) {}
+  },
   EventEmitter,
   Uri: { file: (fsPath: string) => ({ scheme: 'file', fsPath }) },
   workspace: {
@@ -123,6 +150,11 @@ const originalLoad = (Module as unknown as { _load: Loader })._load;
 const { DirectorDocumentLinkProvider } = require('../src/providers/documentLinkProvider') as {
   DirectorDocumentLinkProvider: new (indexes: unknown) => {
     provideDocumentLinks(document: unknown): DocumentLink[];
+  };
+};
+const { DirectorHoverProvider } = require('../src/providers/hoverProvider') as {
+  DirectorHoverProvider: new (indexes: unknown) => {
+    provideHover(document: unknown, position: unknown): Promise<Hover | undefined>;
   };
 };
 const { DirectorCodeLensProvider } = require('../src/providers/codeLensProvider') as {
@@ -173,9 +205,54 @@ function createFixture(): string {
         phase: {
           enum: ['plan', 'review', 'implement', 'execute'],
         },
+        delegate_agent_skills: {
+          description: '各 delegate agent に読み込む skill。',
+        },
+        guardrails: {
+          description: '守るべき制約。',
+          properties: {
+            heading: {
+              description: 'セクション見出し。',
+            },
+          },
+        },
         tools: {
           items: {
             enum: ['read', 'search', 'edit', 'execute', 'agent', 'web'],
+          },
+        },
+      },
+    }),
+  );
+  write(
+    '.director/workflows/schema/workflow.schema.json',
+    JSON.stringify({
+      properties: {
+        workflow: {
+          description: 'ワークフロー定義。',
+          properties: {
+            steps: {
+              items: {
+                $ref: '#/$defs/step',
+              },
+            },
+          },
+        },
+      },
+      $defs: {
+        step: {
+          properties: {
+            failure: {
+              description: '失敗処理。',
+              $ref: '#/$defs/failure',
+            },
+          },
+        },
+        failure: {
+          properties: {
+            on_failure: {
+              description: '失敗時の処理。',
+            },
           },
         },
       },
@@ -208,6 +285,15 @@ function documentAt(relative: string, text?: string) {
       const content = text ?? fs.readFileSync(filePath, 'utf8');
       const before = content.slice(0, offset).split('\n');
       return { line: before.length - 1, character: before[before.length - 1].length };
+    },
+    offsetAt: (position: { line: number; character: number }) => {
+      const content = text ?? fs.readFileSync(filePath, 'utf8');
+      const lines = content.split('\n');
+      let offset = 0;
+      for (let line = 0; line < position.line; line += 1) {
+        offset += (lines[line]?.length ?? 0) + 1;
+      }
+      return offset + position.character;
     },
     getWordRangeAtPosition: () => undefined,
   };
@@ -399,6 +485,70 @@ test('profile の tools 以外の block 配列では補完しない', () => {
   );
 
   assert.deepEqual(items, []);
+});
+
+test('profile フィールドに schema の description がある場合は hover する', async () => {
+  const provider = new DirectorHoverProvider(fakeIndexes);
+  const hover = await provider.provideHover(
+    documentAt(
+      '.director/workflows/profiles/unused.yaml',
+      'delegate_agent_skills:\n  docs-agent: [workflow-yaml-authoring]\n',
+    ),
+    { line: 0, character: 5 },
+  );
+
+  assert.ok(hover);
+  assert.match(hover.contents.value, /delegate_agent_skills/);
+  assert.match(hover.contents.value, /各 delegate agent に読み込む skill。/);
+  assert.equal(hover.range.startLine, 0);
+});
+
+test('profile の schema に description が無いフィールドは hover しない', async () => {
+  const provider = new DirectorHoverProvider(fakeIndexes);
+  const hover = await provider.provideHover(
+    documentAt('.director/workflows/profiles/unused.yaml', 'phase: plan\n'),
+    { line: 0, character: 2 },
+  );
+
+  assert.equal(hover, undefined);
+});
+
+test('profile のネストしたフィールドにも schema description を hover する', async () => {
+  const provider = new DirectorHoverProvider(fakeIndexes);
+  const hover = await provider.provideHover(
+    documentAt(
+      '.director/workflows/profiles/unused.yaml',
+      'guardrails:\n  heading: 制約\n  lines: []\n',
+    ),
+    { line: 1, character: 4 },
+  );
+
+  assert.ok(hover);
+  assert.match(hover.contents.value, /heading/);
+  assert.match(hover.contents.value, /セクション見出し。/);
+});
+
+test('workflow のトップレベルから参照先のネストキーまで schema description を hover する', async () => {
+  const provider = new DirectorHoverProvider(fakeIndexes);
+  const document = documentAt(
+    '.director/workflows/code-review.yaml',
+    [
+      'workflow:',
+      '  steps:',
+      '    - id: review',
+      '      failure:',
+      '        on_failure: abort',
+    ].join('\n'),
+  );
+  const nestedHover = await provider.provideHover(document, { line: 4, character: 10 });
+
+  assert.ok(nestedHover);
+  assert.match(nestedHover.contents.value, /on_failure/);
+  assert.match(nestedHover.contents.value, /失敗時の処理。/);
+
+  const rootHover = await provider.provideHover(document, { line: 0, character: 3 });
+  assert.ok(rootHover);
+  assert.match(rootHover.contents.value, /ワークフロー定義。/);
 });
 
 test('profile の phase は schema の enum を補完する', () => {
