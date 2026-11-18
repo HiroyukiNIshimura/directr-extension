@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as vscode from 'vscode';
 import { parseWorkflow } from '../core/workflowModel';
 import type { DirectorIndexService } from '../indexService';
@@ -8,7 +11,10 @@ export class DirectorCompletionProvider implements vscode.CompletionItemProvider
 
   provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] {
     const location = resolveDirectorLocation(document);
-    if (location?.kind !== 'workflow') return [];
+    if (!location) return [];
+    if (location.kind === 'profile') {
+      return profileCompletions(document, position, location.root);
+    }
     const text = document.getText();
     const before = document.lineAt(position.line).text.slice(0, position.character);
     let key = /^\s*(?:-\s+)?(agent|depends_on|destination|start_step_id)\s*:/.exec(before)?.[1];
@@ -40,6 +46,75 @@ export class DirectorCompletionProvider implements vscode.CompletionItemProvider
       return item;
     });
   }
+}
+
+function profileCompletions(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  root: string,
+): vscode.CompletionItem[] {
+  const before = document.lineAt(position.line).text.slice(0, position.character);
+  const key = /^phase\s*:/.test(before)
+    ? 'phase'
+    : insideProfileTools(document, position)
+      ? 'tools'
+      : undefined;
+  if (!key) return [];
+
+  const candidates = readProfileEnum(root, key);
+  const range = document.getWordRangeAtPosition(position, /[a-zA-Z0-9_-]+/);
+  return candidates.map((candidate) => {
+    const item = new vscode.CompletionItem(candidate, vscode.CompletionItemKind.EnumMember);
+    item.detail = `DirectoR profile ${key}`;
+    if (/^tools\s*:\s*$/.test(before)) item.insertText = `[${candidate}]`;
+    if (range) item.range = range;
+    return item;
+  });
+}
+
+function insideProfileTools(document: vscode.TextDocument, position: vscode.Position): boolean {
+  const before = document.lineAt(position.line).text.slice(0, position.character);
+  if (/^tools\s*:/.test(before)) return true;
+  if (!/^\s+-\s*(?:[^#]*)$/.test(before)) return false;
+
+  for (let line = position.line - 1; line >= 0; line -= 1) {
+    const text = document.lineAt(line).text;
+    if (!text.trim() || /^\s*#/.test(text)) continue;
+    if (/^tools\s*:/.test(text)) return true;
+    if (!/^\s+-\s*(?:[^#]*)$/.test(text)) return false;
+  }
+  return false;
+}
+
+function readProfileEnum(root: string, key: 'tools' | 'phase'): string[] {
+  const schemaPath = path.join(
+    root,
+    '.director',
+    'workflows',
+    'schema',
+    'subagent-profile.schema.json',
+  );
+  try {
+    const schema: unknown = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    if (!isRecord(schema) || !isRecord(schema.properties) || !isRecord(schema.properties[key])) {
+      return [];
+    }
+    const property = schema.properties[key];
+    const values = key === 'tools'
+      ? isRecord(property.items) ? property.items.enum : undefined
+      : property.enum;
+    if (!Array.isArray(values)) return [];
+    return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+      console.warn(`DirectoR: profile スキーマを読み込めませんでした: ${schemaPath}`);
+    }
+    return [];
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function insideSuccess(document: vscode.TextDocument, position: vscode.Position): boolean {

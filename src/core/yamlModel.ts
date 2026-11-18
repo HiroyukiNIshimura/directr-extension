@@ -42,6 +42,7 @@ export function numberValue(node: unknown): number | undefined {
 export interface ProfileInfo {
   description?: string;
   phase?: string;
+  template?: LocatedString;
   tools: string[];
   artifacts: LocatedString[];
 }
@@ -74,6 +75,7 @@ export function parseProfileInfo(text: string): ProfileInfo | undefined {
   return {
     description: stringValue(field(doc.contents, 'description')),
     phase: stringValue(field(doc.contents, 'phase')),
+    template: stringAt(field(doc.contents, 'template'), text),
     tools: entries(field(doc.contents, 'tools')).map(stringValue).filter((value): value is string => value !== undefined),
     artifacts,
   };

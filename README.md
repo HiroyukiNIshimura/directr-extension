@@ -32,6 +32,7 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 
 - 呼び出し元が 1 件: `name` の値にリンク（Cmd/Ctrl + クリックで workflow YAML を開く）。
 - 呼び出し元が 2 件以上: `name` 行の上に呼び出し元 workflow ごとの CodeLens（step id 付き）を表示。
+- `template` の値から `.director/workflows/templates/<name>.tmpl.md` へリンクします。
 
 ## step と artifact への移動
 
@@ -42,6 +43,8 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 ## 補完と診断
 
 - workflow の `agent` に既存 profile、`depends_on` に先行 step、`destination` / `start_step_id` に step ID を補完します。
+- profile の `tools` に `.director/workflows/schema/subagent-profile.schema.json` の enum を補完します（flow / block 配列の両方に対応）。
+- profile の `phase` に `.director/workflows/schema/subagent-profile.schema.json` の enum を補完します。
 - 編集中の workflow に対し、YAML の構文、未定義・重複 step、依存順序、遷移先、後方遷移時の `max_visits` などを診断します。
 - これは主要な参照のチェックであり、DirectoR のスキーマ・バリデーターによる完全な検証の代わりではありません。拡張機能はプロジェクト内のスクリプトを自動実行しません。
 

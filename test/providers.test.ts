@@ -9,12 +9,32 @@ import { buildDirectorIndex } from '../src/core/directorIndex';
 
 // vscode は拡張ホスト内でしか解決できないため、Provider 検証用に最小スタブを差し込む
 class Range {
+  public startLine: number;
+  public startCharacter: number;
+  public endLine: number;
+  public endCharacter: number;
+
   constructor(
-    public startLine: number,
-    public startCharacter: number,
-    public endLine: number,
-    public endCharacter: number,
-  ) {}
+    startLine: number | { line: number; character: number },
+    startCharacter: number | { line: number; character: number },
+    endLine?: number,
+    endCharacter?: number,
+  ) {
+    if (typeof startLine === 'object' && typeof startCharacter === 'object') {
+      this.startLine = startLine.line;
+      this.startCharacter = startLine.character;
+      this.endLine = startCharacter.line;
+      this.endCharacter = startCharacter.character;
+    } else {
+      if (typeof startLine !== 'number' || typeof startCharacter !== 'number') {
+        throw new TypeError('Invalid range arguments');
+      }
+      this.startLine = startLine;
+      this.startCharacter = startCharacter;
+      this.endLine = endLine ?? startLine;
+      this.endCharacter = endCharacter ?? startCharacter;
+    }
+  }
 }
 
 class DocumentLink {
@@ -29,6 +49,16 @@ class CodeLens {
   constructor(
     public range: Range,
     public command: { title: string; command: string; arguments?: unknown[] },
+  ) {}
+}
+
+class CompletionItem {
+  detail: string | undefined;
+  insertText: string | undefined;
+  range: Range | undefined;
+  constructor(
+    public label: string,
+    public kind: number,
   ) {}
 }
 
@@ -57,6 +87,8 @@ const vscodeStub = {
   Range,
   DocumentLink,
   CodeLens,
+  CompletionItem,
+  CompletionItemKind: { Reference: 18, EnumMember: 22 },
   EventEmitter,
   Uri: { file: (fsPath: string) => ({ scheme: 'file', fsPath }) },
   workspace: {
@@ -99,6 +131,11 @@ const { DirectorCodeLensProvider } = require('../src/providers/codeLensProvider'
     dispose(): void;
   };
 };
+const { DirectorCompletionProvider } = require('../src/providers/completionProvider') as {
+  DirectorCompletionProvider: new (indexes: unknown) => {
+    provideCompletionItems(document: unknown, position: unknown): CompletionItem[];
+  };
+};
 
 function createFixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'directr-ext-providers-'));
@@ -128,6 +165,22 @@ function createFixture(): string {
   write('.director/workflows/profiles/source-verifier.yaml', 'name: source-verifier\n');
   write('.director/workflows/profiles/code-implementer.yaml', 'name: code-implementer\n');
   write('.director/workflows/profiles/unused.yaml', 'name: unused\n');
+  write('.director/workflows/templates/wfsub-standard.tmpl.md', 'template');
+  write(
+    '.director/workflows/schema/subagent-profile.schema.json',
+    JSON.stringify({
+      properties: {
+        phase: {
+          enum: ['plan', 'review', 'implement', 'execute'],
+        },
+        tools: {
+          items: {
+            enum: ['read', 'search', 'edit', 'execute', 'agent', 'web'],
+          },
+        },
+      },
+    }),
+  );
   write('.github/agents/wfsub-source-verifier.agent.md', 'agent');
 
   return root;
@@ -147,6 +200,16 @@ function documentAt(relative: string, text?: string) {
   return {
     uri: { scheme: 'file', fsPath: filePath },
     getText: () => text ?? fs.readFileSync(filePath, 'utf8'),
+    lineAt: (line: number) => {
+      const content = text ?? fs.readFileSync(filePath, 'utf8');
+      return { text: content.split('\n')[line] ?? '' };
+    },
+    positionAt: (offset: number) => {
+      const content = text ?? fs.readFileSync(filePath, 'utf8');
+      const before = content.slice(0, offset).split('\n');
+      return { line: before.length - 1, character: before[before.length - 1].length };
+    },
+    getWordRangeAtPosition: () => undefined,
   };
 }
 
@@ -252,4 +315,122 @@ test('呼び出し元が無い profile はリンクも CodeLens も出さない'
     documentAt('.director/workflows/profiles/unused.yaml'),
   );
   assert.deepEqual(links, []);
+});
+
+test('profile の template は templates 配下の tmpl.md へリンクする', () => {
+  const provider = new DirectorDocumentLinkProvider(fakeIndexes);
+  const links = provider.provideDocumentLinks(
+    documentAt(
+      '.director/workflows/profiles/unused.yaml',
+      'name: unused\ntemplate: wfsub-standard\n',
+    ),
+  );
+
+  assert.equal(links.length, 1);
+  assert.equal(path.basename(links[0].target.fsPath), 'wfsub-standard.tmpl.md');
+  assert.equal(links[0].range.startLine, 1);
+});
+
+test('profile の template はファイルが無ければリンクしない', () => {
+  const provider = new DirectorDocumentLinkProvider(fakeIndexes);
+  const links = provider.provideDocumentLinks(
+    documentAt(
+      '.director/workflows/profiles/unused.yaml',
+      'name: unused\ntemplate: missing-template\n',
+    ),
+  );
+
+  assert.deepEqual(links, []);
+});
+
+test('profile の tools は schema の enum を flow 形式で補完する', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt(
+      '.director/workflows/profiles/source-verifier.yaml',
+      'name: source-verifier\ntools: [read, se',
+    ),
+    { line: 1, character: 16 },
+  );
+
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ['read', 'search', 'edit', 'execute', 'agent', 'web'],
+  );
+});
+
+test('profile の tools は block 形式の各要素でも補完する', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt(
+      '.director/workflows/profiles/source-verifier.yaml',
+      'name: source-verifier\ntools:\n  - read\n  - ex',
+    ),
+    { line: 3, character: 6 },
+  );
+
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ['read', 'search', 'edit', 'execute', 'agent', 'web'],
+  );
+});
+
+test('profile の tools: 直後は有効な flow 配列として挿入する', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt('.director/workflows/profiles/source-verifier.yaml', 'name: source-verifier\ntools: '),
+    { line: 1, character: 7 },
+  );
+
+  assert.deepEqual(
+    items.map((item) => item.insertText),
+    ['[read]', '[search]', '[edit]', '[execute]', '[agent]', '[web]'],
+  );
+});
+
+test('profile の tools 以外の block 配列では補完しない', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt(
+      '.director/workflows/profiles/source-verifier.yaml',
+      'name: source-verifier\npurpose:\n  - re',
+    ),
+    { line: 2, character: 6 },
+  );
+
+  assert.deepEqual(items, []);
+});
+
+test('profile の phase は schema の enum を補完する', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt(
+      '.director/workflows/profiles/source-verifier.yaml',
+      'name: source-verifier\nphase: rev',
+    ),
+    { line: 1, character: 10 },
+  );
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.detail]),
+    [
+      ['plan', 'DirectoR profile phase'],
+      ['review', 'DirectoR profile phase'],
+      ['implement', 'DirectoR profile phase'],
+      ['execute', 'DirectoR profile phase'],
+    ],
+  );
+});
+
+test('profile の phase ではないキーには候補を出さない', () => {
+  const provider = new DirectorCompletionProvider(fakeIndexes);
+  const items = provider.provideCompletionItems(
+    documentAt(
+      '.director/workflows/profiles/source-verifier.yaml',
+      'name: source-verifier\nphase_rationale: rev',
+    ),
+    { line: 1, character: 20 },
+  );
+
+  assert.deepEqual(items, []);
 });

@@ -77,9 +77,29 @@ export class DirectorDocumentLinkProvider implements vscode.DocumentLinkProvider
         links.push(link);
       }
     }
-    for (const artifact of parseProfileInfo(text)?.artifacts ?? []) {
-      if (!artifact.value || artifact.value === '.' || artifact.value === '..' ||
-          /[/\\]/.test(artifact.value) || [...artifact.value].some((char) => char.charCodeAt(0) < 32)) continue;
+    const profileInfo = parseProfileInfo(text);
+    if (profileInfo?.template && isSafeFileName(profileInfo.template.value)) {
+      const file = path.join(
+        location.root,
+        '.director',
+        'workflows',
+        'templates',
+        `${profileInfo.template.value}.tmpl.md`,
+      );
+      if (fs.existsSync(file)) {
+        const link = new vscode.DocumentLink(
+          new vscode.Range(
+            document.positionAt(profileInfo.template.start),
+            document.positionAt(profileInfo.template.end),
+          ),
+          vscode.Uri.file(file),
+        );
+        link.tooltip = `template: ${path.basename(file)}`;
+        links.push(link);
+      }
+    }
+    for (const artifact of profileInfo?.artifacts ?? []) {
+      if (!isSafeFileName(artifact.value)) continue;
       const directory = path.join(location.root, '.director', 'workflows', 'artifacts');
       const file = ['yaml', 'yml'].map((ext) => path.join(directory, `${artifact.value}.${ext}`))
         .find((candidate) => fs.existsSync(candidate));
@@ -93,6 +113,11 @@ export class DirectorDocumentLinkProvider implements vscode.DocumentLinkProvider
     }
     return links;
   }
+}
+
+function isSafeFileName(value: string): boolean {
+  return Boolean(value) && value !== '.' && value !== '..' &&
+    !/[/\\]/.test(value) && ![...value].some((char) => char.charCodeAt(0) < 32);
 }
 
 function createLink(range: Parameters<typeof toRange>[0], target: LinkTarget): vscode.DocumentLink {
