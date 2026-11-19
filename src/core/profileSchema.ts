@@ -4,9 +4,17 @@ import * as path from 'node:path';
 export interface ProfileSchemaProperty {
   description?: string;
   enum?: unknown[];
+  const?: unknown;
   items?: ProfileSchemaProperty;
   properties?: Record<string, ProfileSchemaProperty>;
   $ref?: string;
+  allOf?: ProfileSchemaProperty[];
+  anyOf?: ProfileSchemaProperty[];
+  oneOf?: ProfileSchemaProperty[];
+  if?: ProfileSchemaProperty;
+  then?: ProfileSchemaProperty;
+  else?: ProfileSchemaProperty;
+  not?: ProfileSchemaProperty;
   type?: string | string[];
   required?: string[];
   additionalProperties?: boolean | ProfileSchemaProperty;
@@ -137,6 +145,13 @@ function isProfileSchemaProperty(value: unknown): value is ProfileSchemaProperty
   if (value.description !== undefined && typeof value.description !== 'string') return false;
   if (value.enum !== undefined && !Array.isArray(value.enum)) return false;
   if (value.items !== undefined && !isProfileSchemaProperty(value.items)) return false;
+  for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
+    const values = value[key];
+    if (values !== undefined && (!Array.isArray(values) || !values.every(isProfileSchemaProperty))) return false;
+  }
+  for (const key of ['if', 'then', 'else', 'not'] as const) {
+    if (value[key] !== undefined && !isProfileSchemaProperty(value[key])) return false;
+  }
   if (value.properties !== undefined) {
     if (!isRecord(value.properties)) return false;
     if (!Object.values(value.properties).every(isProfileSchemaProperty)) return false;

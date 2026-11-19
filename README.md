@@ -47,12 +47,12 @@ profile YAML の `name:` を手がかりに、その profile を `agent` とし�
 - profile のフィールドにスキーマの `description` があれば、ネストしたキーを含めてカーソル位置に説明を表示します。
 - workflow のネストしたフィールドにも `.director/workflows/schema/workflow.schema.json` の `description` を表示します。
 - 編集中の workflow に対し、YAML の構文、未定義・重複 step、依存順序、遷移先、後方遷移時の `max_visits` などを診断します。
-- workflow / profile のスキーマに対し、必須キー不足、未定義キー、型、enum、配列長・重複、文字列長、数値下限を波線で表示します。複雑な `if` / `allOf` などの条件制約は対象外です。スキーマはキャッシュし、入力後 200ms の debounce で検証します。
+- workflow / profile のスキーマに対し、必須キー不足、未定義キー、型、enum、配列長・重複、文字列長、数値下限、および `allOf` / `anyOf` / `oneOf` / `if` / `then` / `else` / `not` の条件制約を波線で表示します。スキーマはキャッシュし、入力後 200ms の debounce で検証します。
 - これは主要な参照のチェックであり、DirectoR のスキーマ・バリデーターによる完全な検証の代わりではありません。拡張機能はプロジェクト内のスクリプトを自動実行しません。
 
 ## フロー図
 
-workflow YAML を開き、エディターの右クリックメニュー、またはコマンドパレットから `DirectoR: フロー図を表示` を実行します。依存関係・成功・失敗遷移を色分けして表示し、step のクリックで YAML の定義へ移動できます。編集中の変更も反映されます。parallel / chunk の agent は親 step 内にまとめて表示します。
+workflow YAML を開き、エディターの右クリックメニュー、またはコマンドパレットから `DirectoR: フロー図を表示` を実行します。主経路はカード形式で縦に表示し、依存先はチップ、成功・失敗 route は各 step の折りたたみ内に表示するため、大規模 workflow でも線が交差しにくくなっています。`condition` に加えて `when` の構造化条件、`description`、`on_success` / `on_failure`、遷移先も表示します。step 名のクリックで YAML の定義へ移動でき、編集中の変更も反映されます。parallel の集約条件、chunk の並列数・最大タスク数、`max_visits`、workflow 全体の実行上限も表示します。
 
 ## コマンド
 

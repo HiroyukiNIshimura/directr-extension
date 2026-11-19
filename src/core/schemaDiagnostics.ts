@@ -31,6 +31,25 @@ function validateNode(
   if (!resolved) return;
   const current = { ...resolved, ...schema };
 
+  for (const branch of current.allOf ?? []) {
+    validateNode(node, branch, root, diagnostics);
+  }
+  for (const branches of [[current.anyOf, 'anyOf'], [current.oneOf, 'oneOf']] as const) {
+    const [schemas, keyword] = branches;
+    if (!schemas) continue;
+    const matches = schemas.filter((branch) => schemaMatches(node, branch, root));
+    if ((keyword === 'anyOf' && matches.length === 0) || (keyword === 'oneOf' && matches.length !== 1)) {
+      addDiagnostic(node, `${keyword} の条件に一致する分岐がありません。`, diagnostics);
+    }
+  }
+  if (current.if) {
+    const branch = schemaMatches(node, current.if, root) ? current.then : current.else;
+    if (branch) validateNode(node, branch, root, diagnostics);
+  }
+  if (current.not && schemaMatches(node, current.not, root)) {
+    addDiagnostic(node, '組み合わせは許可されていません。', diagnostics);
+  }
+
   const expectedTypes = Array.isArray(current.type)
     ? current.type
     : current.type
@@ -42,6 +61,9 @@ function validateNode(
   }
 
   if (isScalar(node)) {
+    if (current.const !== undefined && !Object.is(node.value, current.const)) {
+      addDiagnostic(node, `値は ${String(current.const)} にしてください。`, diagnostics);
+    }
     if (current.enum && !current.enum.some((value) => Object.is(value, node.value))) {
       addDiagnostic(node, `候補外の値です。指定可能: ${current.enum.join(', ')}`, diagnostics);
     }
@@ -57,6 +79,12 @@ function validateNode(
         node.value < current.minimum) {
       addDiagnostic(node, `${current.minimum}以上を指定してください。`, diagnostics);
     }
+  }
+
+  function schemaMatches(node: Node, schema: ProfileSchemaProperty, root: JsonSchema): boolean {
+    const diagnostics: SchemaDiagnostic[] = [];
+    validateNode(node, schema, root, diagnostics);
+    return diagnostics.length === 0;
   }
 
   if (isSeq(node)) {

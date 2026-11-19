@@ -145,27 +145,46 @@ test('deactivate は例外を投げない', () => {
   assert.doesNotThrow(() => deactivate());
 });
 
-test('フロー図は依存と成功・失敗を区別し YAML の内容をエスケープする', () => {
+test('フロー図はカード型で主経路と判定詳細を分けて YAML をエスケープする', () => {
   const model = parseWorkflow(`workflow:
   name: "<unsafe>"
+  max_total_step_executions: 10
   steps:
     - id: plan
       depends_on: []
-      success: {}
+      success:
+        routes:
+          - id: approve
+            description: "承認済み"
+            when:
+              path: payload.status
+              equals: approved
+            on_success: continue
+            destination: review
       failure:
+        condition: "failed"
         destination: abort
     - id: review
       depends_on: [plan]
-      success: {}
+      success:
+        condition: "done"
       failure:
+        condition: "failed"
+        on_failure: retry
         destination: plan
 `);
   const html = diagramHtml(model, 'test-nonce');
   assert.match(html, /&lt;unsafe&gt;/);
   assert.doesNotMatch(html, /<unsafe>/);
-  assert.match(html, /class="dependency"/);
-  assert.match(html, /class="success"/);
-  assert.match(html, /class="failure"/);
+  assert.match(html, /class="step-card"/);
+  assert.match(html, /class="chip dependency"/);
+  assert.match(html, /class="routes"/);
+  assert.match(html, /retry → plan/);
+  assert.match(html, /成功分岐: 1 routes/);
+  assert.match(html, /payload\.status equals &quot;approved&quot;/);
+  assert.match(html, /全体上限: 10 回/);
   assert.match(html, /data-step="1"/);
-  assert.match(html, /path\.dependency,path\.success,path\.failure\{fill:none/);
+  assert.doesNotMatch(html, /<svg/);
+  assert.match(html, /線を主経路だけに絞り/);
+  assert.doesNotMatch(html, /次 → review/);
 });

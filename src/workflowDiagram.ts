@@ -17,57 +17,94 @@ export function diagramHtml(model: WorkflowModel, nonce: string): string {
   } else {
     const issues = validateWorkflow(model);
     const warnings = issues.length
-      ? `<details><summary>診断 ${issues.length} 件（未解決の参照は図に表示されません）</summary><ul>${issues.map((issue) => `<li>${escapeHtml(issue.message)}</li>`).join('')}</ul></details>`
+      ? `<details><summary>診断 ${issues.length} 件（YAML の修正を確認してください）</summary><ul>${issues.map((issue) => `<li>${escapeHtml(issue.message)}</li>`).join('')}</ul></details>`
       : '';
-    const height = 200 + model.steps.length * 100;
-    const positions = new Map(model.steps.map((step, index) => [step.id.value, 95 + index * 100]));
-    const paths: string[] = [];
-    const nodes: string[] = [];
-    const ordered = [...model.steps];
-    const start = model.start ? ordered.findIndex((step) => step.id.value === model.start?.value) : 0;
-    if (start > 0) ordered.push(...ordered.splice(0, start));
-    const edge = (from: string, to: string | null, kind: string, label: string) => {
-      const sourceY = positions.get(from);
-      const targetY = to === null ? height - 95 : to === 'abort' && kind === 'failure' ? height - 35 : positions.get(to);
-      if (sourceY === undefined || targetY === undefined) return;
-      const side = kind === 'dependency' ? 100 : kind === 'failure' ? 850 : 700;
-      const x = kind === 'dependency' ? 330 : 670;
-      const middleY = (sourceY + targetY) / 2;
-      paths.push(`<path class="${kind}" d="M ${x} ${sourceY} C ${side} ${sourceY}, ${side} ${targetY}, ${x} ${targetY}" marker-end="url(#arrow-${kind})"/>`);
-      paths.push(`<text class="edge-label ${kind}" x="${side}" y="${middleY - 5}">${escapeHtml(label)}</text>`);
-    };
-    for (const [index, step] of model.steps.entries()) {
-      const y = 95 + index * 100;
-      const details = [step.phase, ...step.agents.map((agent) => agent.value)].filter(Boolean).join(' / ');
-      const shortDetails = details.length > 48 ? `${details.slice(0, 45)}…` : details;
-      nodes.push(`<g class="step" tabindex="0" role="button" aria-label="${escapeHtml(step.id.value)}" data-step="${index}"><title>${escapeHtml(details)}</title><rect x="330" y="${y - 28}" width="340" height="56" rx="8"/><text x="345" y="${y - 3}">${escapeHtml(step.id.value)}</text><text class="details" x="345" y="${y + 17}">${escapeHtml(shortDetails)}</text></g>`);
-      for (const dep of step.dependencies) edge(dep.value, step.id.value, 'dependency', '依存');
-      for (const transition of step.transitions) {
-        edge(step.id.value, transition.destination.value, transition.kind, transition.kind === 'success' ? '成功' : `失敗${transition.label ? `: ${transition.label}` : ''}`);
-      }
-      if (!step.transitions.some((transition) => transition.kind === 'success')) {
-        const orderIndex = ordered.indexOf(step);
-        const next = ordered[orderIndex + 1];
-        edge(step.id.value, next?.id.value ?? null, 'success', next ? '成功（次）' : '成功（完了）');
-      }
-    }
-    const startY = positions.get(ordered[0].id.value);
-    if (startY !== undefined) {
-      paths.push(`<path class="success" d="M 500 45 C 760 45, 760 ${startY}, 670 ${startY}" marker-end="url(#arrow-success)"/>`);
-    }
-    nodes.push('<g class="end"><rect x="330" y="5" width="340" height="40" rx="8"/><text x="345" y="30">開始</text></g>');
-    nodes.push(`<g class="end"><rect x="330" y="${height - 117}" width="340" height="45" rx="8"/><text x="345" y="${height - 88}">完了</text></g>`);
-    nodes.push(`<g class="end"><rect x="330" y="${height - 57}" width="340" height="45" rx="8"/><text x="345" y="${height - 28}">abort</text></g>`);
-    content = `<p>step をクリックすると YAML の定義へ移動します。</p>${warnings}<div class="legend"><span class="dependency">━━ 依存</span> <span class="success">━━ 成功</span> <span class="failure">━━ 失敗・差戻し</span></div><div class="canvas"><svg viewBox="0 0 1000 ${height}" width="1000" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs>${['dependency', 'success', 'failure'].map((kind) => `<marker id="arrow-${kind}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="${kind}" d="M 0 0 L 8 4 L 0 8 z"/></marker>`).join('')}</defs>${paths.join('')}${nodes.join('')}</svg></div>`;
+    const startIndex = model.start
+      ? model.steps.findIndex((step) => step.id.value === model.start?.value)
+      : 0;
+    const ordered = [
+      ...model.steps.slice(startIndex).map((step, offset) => ({ step, index: startIndex + offset })),
+      ...model.steps.slice(0, startIndex).map((step, index) => ({ step, index })),
+    ];
+    const nodes = ordered.map(({ step, index }, orderIndex) => {
+      const successRoutes = step.transitions.filter((transition) => transition.kind === 'success' && transition.route);
+      const directSuccess = step.transitions.find((transition) => transition.kind === 'success' && !transition.route);
+      const next = ordered[orderIndex + 1]?.step;
+      const target = directSuccess?.destination.value ?? (successRoutes.length ? undefined : next?.id.value);
+      const failures = step.transitions.filter((transition) => transition.kind === 'failure');
+      const dependencyText = step.dependencies.length
+        ? step.dependencies.map((dependency) => `<span class="chip dependency">${escapeHtml(dependency.value)}</span>`).join('')
+        : '<span class="muted">なし</span>';
+      const agentRows = step.agents.map((agent) => `<li>${escapeHtml(agent.value)}</li>`).join('');
+      const kindLabel = step.kind === 'parallel'
+        ? `parallel${step.parallelPolicy ? ` · ${escapeHtml(step.parallelPolicy)}` : ''}`
+        : step.kind === 'chunk'
+          ? `chunk${step.chunk?.maxConcurrency ? ` · ${step.chunk.maxConcurrency} parallel` : ''}`
+          : 'agent';
+      const routeRows = [
+        ...(step.successCondition
+          ? [`<li><span class="route-success">成功</span><div>${directSuccess ? `<strong>continue → ${escapeHtml(directSuccess.destination.value)}</strong>` : ''}<p>${escapeHtml(step.successCondition)}</p></div></li>`]
+          : []),
+        ...successRoutes.map((transition) => {
+          const source = transition.source ? ` (${escapeHtml(transition.source)})` : '';
+          const description = transition.description ? `<p>${escapeHtml(transition.description)}</p>` : '';
+          const condition = transition.condition ? `<p>${escapeHtml(transition.condition)}</p>` : '';
+          return `<li><span class="route-success">成功 route${source}</span><div><strong>${escapeHtml(transition.label ?? 'route')} · ${escapeHtml(transition.action ?? 'continue')} → ${escapeHtml(transition.destination.value)}</strong>${description}${condition}</div></li>`;
+        }),
+        ...failures.map((transition) => {
+          const source = transition.source ? ` (${escapeHtml(transition.source)})` : '';
+          const route = transition.label ? `${escapeHtml(transition.label)} · ` : '';
+          const action = transition.action ? `${escapeHtml(transition.action)} → ` : '';
+          const description = transition.description ? `<p>${escapeHtml(transition.description)}</p>` : '';
+          return `<li><span class="route-failure">失敗${source}</span><div><strong>${route}${action}${escapeHtml(transition.destination.value)}</strong>${description}${transition.condition ? `<p>${escapeHtml(transition.condition)}</p>` : ''}</div></li>`;
+        }),
+      ].join('');
+      const jumpKind = target && target !== next?.id.value ? ' jump' : '';
+      const connector = successRoutes.length
+        ? `<div class="flow-connector branched"><span>成功分岐: ${successRoutes.length} routes（詳細を展開）</span></div>`
+        : target
+          ? `<div class="flow-connector${jumpKind}">${directSuccess ? `<span>success jump → ${escapeHtml(target)}</span>` : ''}</div>`
+          : '<div class="flow-connector complete"><span>完了</span></div>';
+      const metadata = [
+        step.phase,
+        step.maxVisits ? `max visits ${step.maxVisits}` : '',
+        step.chunk?.maxTasks ? `max tasks ${step.chunk.maxTasks}` : '',
+      ].filter((value): value is string => Boolean(value))
+        .map((value) => `<span class="meta">${escapeHtml(value)}</span>`).join('');
+      return `<article class="step-card">
+        <div class="step-heading">
+          <button class="step-open" type="button" data-step="${index}" aria-label="${escapeHtml(step.id.value)} の YAML を開く">
+            <span class="step-id">${escapeHtml(step.id.value)}</span>
+            <span class="step-kind">${kindLabel}</span>
+          </button>
+          ${metadata}
+        </div>
+        <div class="row"><span class="label">依存</span><div class="chips">${dependencyText}</div></div>
+        <div class="agents"><span class="label">担当</span><ul>${agentRows}</ul></div>
+        ${routeRows ? `<details class="routes"><summary>判定・経路 (${successRoutes.length + failures.length})</summary><ul>${routeRows}</ul></details>` : ''}
+      </article>${connector}`;
+    }).join('');
+    const limit = model.maxTotalStepExecutions
+      ? `<span class="summary-chip">全体上限: ${model.maxTotalStepExecutions} 回</span>`
+      : '';
+    content = `<p class="hint">線を主経路だけに絞り、依存と失敗経路は各 step 内に整理しています。step 名をクリックすると YAML へ移動します。</p>
+      <div class="summary">${limit}<span class="summary-chip">steps: ${model.steps.length}</span></div>
+      ${warnings}<div class="flow"><div class="terminal start">開始</div><div class="flow-connector"><span>実行順</span></div>${nodes}<div class="terminal finish">完了</div></div>`;
   }
-  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>
-    body{font-family:var(--vscode-font-family, sans-serif);color:var(--vscode-foreground, #24292f);background:var(--vscode-editor-background, #fff);padding:16px}
-    .canvas{overflow:auto} .legend{display:flex;gap:24px} .step{cursor:pointer} .step rect,.end rect{fill:var(--vscode-editorWidget-background, #f6f8fa);stroke:var(--vscode-focusBorder, #5686c0);stroke-width:2}
-    text{fill:var(--vscode-foreground, #24292f);font-size:14px}.details{font-size:11px}.edge-label{font-size:11px}
-    .legend .dependency{color:#6688dd}.legend .success{color:#32a852}.legend .failure{color:#dd7755}
-    path.dependency,path.success,path.failure{fill:none;stroke-width:2} path.dependency{stroke:#6688dd;stroke-dasharray:6 4} path.success{stroke:#32a852} path.failure{stroke:#dd7755}
-    text.dependency,marker .dependency{fill:#6688dd} text.success,marker .success{fill:#32a852} text.failure,marker .failure{fill:#dd7755} marker path{stroke:none}
-  </style></head><body><h2>${escapeHtml(model.name ?? 'Workflow')}</h2>${content}<script nonce="${nonce}">const vscode=acquireVsCodeApi();document.querySelectorAll('[data-step]').forEach(node=>{const open=()=>vscode.postMessage({step:Number(node.dataset.step)});node.addEventListener('click',open);node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}})});</script></body></html>`;
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>
+    :root{color-scheme:light dark}
+    *{box-sizing:border-box}body{font-family:var(--vscode-font-family, sans-serif);color:var(--vscode-foreground, #24292f);background:var(--vscode-editor-background, #fff);padding:20px;line-height:1.5}
+    h2{margin:0 0 4px}.hint,.muted{color:var(--vscode-descriptionForeground, #65707a)}.hint{max-width:760px;margin:0 0 12px}
+    details{margin:10px 0}summary{cursor:pointer}.summary{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 18px}.summary-chip,.meta,.chip,.step-kind{display:inline-flex;align-items:center;border-radius:999px;padding:2px 9px;font-size:12px}
+    .summary-chip,.meta,.step-kind{background:var(--vscode-badge-background, #e8edf2);color:var(--vscode-badge-foreground, inherit)}
+    .flow{max-width:900px;margin:0 auto;display:flex;flex-direction:column;align-items:center}.terminal{min-width:180px;text-align:center;border:1px solid var(--vscode-focusBorder, #5686c0);border-radius:999px;padding:7px 18px;font-weight:600;background:var(--vscode-editorWidget-background, #f6f8fa)}
+    .step-card{width:min(760px,100%);border:1px solid var(--vscode-widget-border, #9aa4ad);border-left:4px solid var(--vscode-focusBorder, #5686c0);border-radius:10px;padding:14px 16px;background:var(--vscode-editorWidget-background, #f6f8fa);box-shadow:0 2px 8px #0002}
+    .step-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.step-open{appearance:none;border:0;background:none;color:inherit;padding:0;display:flex;align-items:center;gap:9px;cursor:pointer;text-align:left}.step-open:hover .step-id{text-decoration:underline}.step-id{font-weight:700;font-size:16px;overflow-wrap:anywhere}.step-kind{background:#6f42c122;color:var(--vscode-foreground)}
+    .row,.agents{display:grid;grid-template-columns:62px 1fr;gap:8px;margin-top:10px}.label{font-size:12px;color:var(--vscode-descriptionForeground, #65707a);font-weight:600}.chips{display:flex;gap:5px;flex-wrap:wrap}.chip{border:1px solid #6688dd66;background:#6688dd18;color:#6688dd}.agents ul{list-style:none;padding:0;margin:0;overflow-wrap:anywhere}.agents li+li{margin-top:3px}
+    .routes{border-top:1px solid var(--vscode-widget-border, #9aa4ad66);padding-top:8px}.routes summary{font-size:13px}.routes>ul{list-style:none;padding:0;margin:10px 0 0}.routes>ul>li{display:grid;grid-template-columns:minmax(90px,auto) 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--vscode-widget-border, #9aa4ad33)}.routes>ul>li p{margin:2px 0 0;color:var(--vscode-descriptionForeground, #65707a);font-size:12px}.route-success{color:#2da44e;font-weight:600}.route-failure{color:#cf6a4c;font-weight:600}
+    .flow-connector{height:54px;position:relative;display:flex;align-items:center;justify-content:center;color:#2da44e}.flow-connector:before{content:"";position:absolute;top:0;bottom:15px;left:50%;border-left:2px solid currentColor}.flow-connector:after{content:"";position:absolute;bottom:11px;left:calc(50% - 4px);border:5px solid transparent;border-top-color:currentColor;border-bottom:0}.flow-connector span{position:relative;z-index:1;margin-left:160px;background:var(--vscode-editor-background, #fff);border:1px solid #2da44e55;border-radius:999px;padding:2px 8px;font-size:11px}.flow-connector.jump span{color:#b7791f;border-color:#b7791f55}.flow-connector.jump{color:#b7791f}.flow-connector.branched{color:#b7791f}.flow-connector.branched:before{border-left-style:dashed}.flow-connector.branched:after{display:none}.flow-connector.branched span{border-color:#b7791f55}.finish{margin-top:2px}
+    @media(max-width:600px){body{padding:12px}.flow-connector span{margin-left:110px}.row,.agents{grid-template-columns:1fr}.routes>ul>li{grid-template-columns:1fr;gap:3px}}
+  </style></head><body><h2>${escapeHtml(model.name ?? 'Workflow')}</h2>${content}<script nonce="${nonce}">const vscode=acquireVsCodeApi();document.querySelectorAll('[data-step]').forEach(node=>node.addEventListener('click',()=>vscode.postMessage({step:Number(node.dataset.step)})));</script></body></html>`;
 }
 
 export function showWorkflowDiagram(document: vscode.TextDocument): void {
